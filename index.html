@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <!-- Auto-redirect: if opened as a file, go to the server -->
+  <script>
+    if (window.location.protocol === 'file:') {
+      window.location.replace('http://localhost:3000/');
+    }
+  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>House Elemental Portal | PostgreSQL Edition</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Ambient Background Decor -->
+  <div class="bg-shape bg-shape-1"></div>
+  <div class="bg-shape bg-shape-2"></div>
+  <div class="bg-shape bg-shape-3"></div>
+
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="brand">
+        <div class="brand-logo">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+            <polyline points="2 17 12 22 22 17"></polyline>
+            <polyline points="2 12 12 17 22 12"></polyline>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <h1>PANCHA TATVA</h1>
+          <p>Elemental House Realm</p>
+        </div>
+      </div>
+      <div class="header-status" id="headerStatus">
+        <span class="status-dot"></span>
+        <span class="status-text" id="statusText">System Ready</span>
+      </div>
+    </header>
+
+    <!-- Notification Toast -->
+    <div id="toast" class="toast hidden">
+      <div class="toast-icon" id="toastIcon">✓</div>
+      <div class="toast-message" id="toastMsg">Action completed successfully</div>
+    </div>
+
+    <!-- MAIN AUTH VIEW (Register / Login) -->
+    <main id="authSection" class="view-section">
+      <div class="auth-card">
+        <!-- Auth Tab Navigation -->
+        <div class="auth-tabs">
+          <button type="button" class="auth-tab-btn active" id="tabRegister" onclick="switchAuthTab('register')">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
+              <circle cx="9" cy="7" r="4"></circle>
+              <line x1="19" y1="8" x2="19" y2="14"></line>
+              <line x1="22" y1="11" x2="16" y2="11"></line>
+            </svg>
+            Register
+          </button>
+          <button type="button" class="auth-tab-btn" id="tabLogin" onclick="switchAuthTab('login')">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path>
+              <polyline points="10 17 15 12 10 7"></polyline>
+              <line x1="15" y1="12" x2="3" y2="12"></line>
+            </svg>
+            Sign In
+          </button>
+        </div>
+
+        <!-- REGISTER FORM -->
+        <form id="registerForm" class="auth-form" onsubmit="handleRegister(event)">
+          <div class="form-intro">
+            <h2>Create Your Account</h2>
+            <p>Stored directly in your secure PostgreSQL database</p>
+          </div>
+
+          <div class="form-group">
+            <label for="regName">Full Name</label>
+            <div class="input-wrapper">
+              <span class="input-icon">👤</span>
+              <input type="text" id="regName" placeholder="e.g. Harish Kumar" required autocomplete="name">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="regEmail">Email Address</label>
+            <div class="input-wrapper">
+              <span class="input-icon">✉️</span>
+              <input type="email" id="regEmail" placeholder="your.email@domain.com" required autocomplete="email">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="regPassword">Password</label>
+            <div class="input-wrapper">
+              <span class="input-icon">🔒</span>
+              <input type="password" id="regPassword" placeholder="Minimum 6 characters" minlength="6" required autocomplete="new-password">
+              <button type="button" class="toggle-password" onclick="togglePasswordVisibility('regPassword')">👁️</button>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="regConfirmPassword">Confirm Password</label>
+            <div class="input-wrapper">
+              <span class="input-icon">🔒</span>
+              <input type="password" id="regConfirmPassword" placeholder="Re-enter your password" minlength="6" required autocomplete="new-password">
+              <button type="button" class="toggle-password" onclick="togglePasswordVisibility('regConfirmPassword')">👁️</button>
+            </div>
+          </div>
+
+          <!-- HOUSE SELECTION -->
+          <div class="form-group">
+            <label class="house-label">
+              <span>Select Your House</span>
+              <span class="house-tag">5 Sacred Elements</span>
+            </label>
+            <p class="field-hint">Choose 1 elemental house to join:</p>
+
+            <div class="house-selection-grid">
+              <!-- House 1: Vayu -->
+              <label class="house-option">
+                <input type="radio" name="houseSelection" value="vayu" required checked>
+                <div class="house-card-content vayu-theme">
+                  <div class="house-num-badge">1</div>
+                  <div class="house-mini-icon">💨</div>
+                  <div class="house-info">
+                    <strong>Vayu</strong>
+                    <span>Air & Wind</span>
+                  </div>
+                  <div class="check-mark">✓</div>
+                </div>
+              </label>
+
+              <!-- House 2: Agni -->
+              <label class="house-option">
+                <input type="radio" name="houseSelection" value="agni" required>
+                <div class="house-card-content agni-theme">
+                  <div class="house-num-badge">2</div>
+                  <div class="house-mini-icon">🔥</div>
+                  <div class="house-info">
+                    <strong>Agni</strong>
+                    <span>Fire & Energy</span>
+                  </div>
+                  <div class="check-mark">✓</div>
+                </div>
+              </label>
+
+              <!-- House 3: Jal -->
+              <label class="house-option">
+                <input type="radio" name="houseSelection" value="jal" required>
+                <div class="house-card-content jal-theme">
+                  <div class="house-num-badge">3</div>
+                  <div class="house-mini-icon">💧</div>
+                  <div class="house-info">
+                    <strong>Jal</strong>
+                    <span>Water & Flow</span>
+                  </div>
+                  <div class="check-mark">✓</div>
+                </div>
+              </label>
+
+              <!-- House 4: Akash -->
+              <label class="house-option">
+                <input type="radio" name="houseSelection" value="akash" required>
+                <div class="house-card-content akash-theme">
+                  <div class="house-num-badge">4</div>
+                  <div class="house-mini-icon">🌌</div>
+                  <div class="house-info">
+                    <strong>Akash</strong>
+                    <span>Sky & Ether</span>
+                  </div>
+                  <div class="check-mark">✓</div>
+                </div>
+              </label>
+
+              <!-- House 5: Prudhvi -->
+              <label class="house-option">
+                <input type="radio" name="houseSelection" value="prudhvi" required>
+                <div class="house-card-content prudhvi-theme">
+                  <div class="house-num-badge">5</div>
+                  <div class="house-mini-icon">🌍</div>
+                  <div class="house-info">
+                    <strong>Prudhvi</strong>
+                    <span>Earth & Stability</span>
+                  </div>
+                  <div class="check-mark">✓</div>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <button type="submit" class="btn-primary-blue btn-submit" id="btnSubmitRegister">
+            <span>Complete Registration</span>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M5 12h14"></path>
+              <path d="m12 5 7 7-7 7"></path>
+            </svg>
+          </button>
+        </form>
+
+        <!-- LOGIN FORM (Clean without extra 2D image) -->
+        <form id="loginForm" class="auth-form hidden" onsubmit="handleLogin(event)">
+          <div class="form-intro">
+            <h2>Welcome Back</h2>
+            <p>Sign in to access your registered elemental house</p>
+          </div>
+
+          <div class="form-group">
+            <label for="loginEmail">Email Address</label>
+            <div class="input-wrapper">
+              <span class="input-icon">✉️</span>
+              <input type="email" id="loginEmail" placeholder="your.email@domain.com" required autocomplete="email">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="loginPassword">Password</label>
+            <div class="input-wrapper">
+              <span class="input-icon">🔒</span>
+              <input type="password" id="loginPassword" placeholder="Enter your password" required autocomplete="current-password">
+              <button type="button" class="toggle-password" onclick="togglePasswordVisibility('loginPassword')">👁️</button>
+            </div>
+          </div>
+
+          <button type="submit" class="btn-primary-blue btn-submit" id="btnSubmitLogin">
+            <span>Log In to Realm</span>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path>
+              <polyline points="10 17 15 12 10 7"></polyline>
+              <line x1="15" y1="12" x2="3" y2="12"></line>
+            </svg>
+          </button>
+
+          <div class="form-footer-switch">
+            <p>New candidate? <a href="javascript:void(0)" onclick="switchAuthTab('register')">Register here</a></p>
+          </div>
+        </form>
+      </div>
+    </main>
+
+    <!-- DASHBOARD VIEW (After Login: Only House Button) -->
+    <section id="dashboardSection" class="view-section hidden">
+      <div class="dashboard-wrapper house-only-layout">
+        
+        <!-- Neat Minimal User Header Card -->
+        <div class="profile-header-card">
+          <div class="user-greeting">
+            <div class="avatar-circle" id="userAvatar">H</div>
+            <div>
+              <div class="sub-title">AUTHENTICATED CANDIDATE</div>
+              <h2 id="userNameDisplay">Harish</h2>
+              <span class="user-email-badge" id="userEmailDisplay">harish@example.com</span>
+            </div>
+          </div>
+
+          <div class="header-actions">
+            <button type="button" class="btn-logout" onclick="handleLogout()">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                <polyline points="16 17 21 12 16 7"></polyline>
+                <line x1="21" y1="12" x2="9" y2="12"></line>
+              </svg>
+              Logout
+            </button>
+          </div>
+        </div>
+
+        <!-- Student hand raise action -->
+        <div class="hero-2d-section house-focus-center hand-raise-panel">
+          <div class="section-title-wrap">
+            <span class="pill-badge">Student Classroom</span>
+            <h3>Ready to speak?</h3>
+            <p>Raise your hand once. Faculty will see your place in the queue.</p>
+          </div>
+
+          <div class="student-house-identity">
+            <div class="student-house-icon" id="studentHouseIcon">💨</div>
+            <div>
+              <span id="studentHouseBadge">House Vayu</span>
+              <strong id="studentHouseName">Vayu</strong>
+            </div>
+          </div>
+
+          <button type="button" id="raiseHandButton" class="raise-hand-button" onclick="handleRaiseHand()">
+            <span class="raise-hand-symbol">✋</span>
+            <span class="raise-button-label">Raise Hand</span>
+          </button>
+          <p class="raise-hand-status" id="raiseHandStatus">Your submission will be timestamped and added to the faculty queue.</p>
+
+          <div class="first-raiser-card" id="firstRaiserCard" hidden>
+            <div class="first-raiser-icon">1</div>
+            <div class="first-raiser-copy">
+              <span>First hand raised</span>
+              <strong id="firstRaiserName">—</strong>
+            </div>
+            <div class="first-raiser-house">
+              <span id="firstRaiserHouseIcon">🏠</span>
+              <strong id="firstRaiserHouse">—</strong>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+    </section>
+
+    <!-- INTERACTIVE HOUSE POPUP MODAL -->
+    <div id="houseModal" class="modal-overlay hidden" onclick="closeHouseModal(event)">
+      <div class="modal-card" onclick="event.stopPropagation()">
+        <button type="button" class="modal-close-btn" onclick="closeHouseModal()">&times;</button>
+        
+        <div class="modal-banner" id="modalBanner">
+          <div class="modal-2d-badge" id="modal3DBadge">💨</div>
+          <div class="modal-title-group">
+            <span class="modal-order-tag" id="modalFirstStatus">👑 Assigned Elemental House</span>
+            <h2 id="modalHouseTitle">HOUSE VAYU</h2>
+            <p id="modalHouseMotto">"Master of the Whispering Winds and Boundless Skies"</p>
+          </div>
+        </div>
+
+        <div class="modal-content-body">
+          <div class="stat-boxes-row">
+            <div class="stat-box">
+              <span class="stat-label">Element</span>
+              <strong id="modalElement">Air / Wind</strong>
+            </div>
+            <div class="stat-box">
+              <span class="stat-label">House Number</span>
+              <strong id="modalNumber">House #1</strong>
+            </div>
+            <div class="stat-box">
+              <span class="stat-label">Prime Virtue</span>
+              <strong id="modalVirtue">Agility & Speed</strong>
+            </div>
+          </div>
+
+          <div class="house-details-box">
+            <h4>Elemental Power & Description</h4>
+            <p id="modalHouseDesc">Swift, elusive, and perceptive as the atmospheric currents.</p>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn-primary-blue" onclick="closeHouseModal()">Close Chamber</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
