@@ -387,7 +387,7 @@
   </div>
   <div class="header-right">
     <div class="db-pill" id="connPill"><span class="dot"></span>Connecting…</div>
-    <a href="/" class="btn-back">⬅ Back to Portal</a>
+    <a href="index.html" class="btn-back">⬅ Back to Portal</a>
   </div>
 </header>
 
@@ -524,69 +524,84 @@
     prudhvi: { name:'Prudhvi', icon:'🌍', cls:'prudhvi' },
   };
 
-  // Always build API URL from current page origin (handles localhost:3000)
-  const API = window.location.port === '5500' ? 'http://localhost:3000' : window.location.origin;
+  // Storage keys for GitHub Pages / client mode
+  const DB_USERS_KEY = 'pancha_tatva_all_users_db';
+  const DB_RAISES_KEY = 'pancha_tatva_all_raises_db';
+  const DB_QUESTION_KEY = 'pancha_tatva_current_question';
+
+  function getLocalUsers() {
+    try { return JSON.parse(localStorage.getItem(DB_USERS_KEY) || '[]'); } catch(e) { return []; }
+  }
+  function getLocalRaises() {
+    try { return JSON.parse(localStorage.getItem(DB_RAISES_KEY) || '[]'); } catch(e) { return []; }
+  }
+  function getLocalQuestion() {
+    return localStorage.getItem(DB_QUESTION_KEY) || 'Question 1';
+  }
+
+  // If deploying frontend on GitHub Pages, set BACKEND_URL to your deployed Node backend (e.g. "https://your-app.onrender.com")
+  const BACKEND_URL = '';
+  const API = BACKEND_URL || (window.location.port === '5500' ? 'http://localhost:3000' : window.location.origin);
   let allUsers = [];
 
   async function loadUsers() {
     const btn = document.getElementById('refreshBtn');
     const pill = document.getElementById('connPill');
     btn.classList.add('spinning');
-    pill.innerHTML = '<span class="dot"></span> Connecting…';
-    pill.className = 'db-pill';
+
+    let loadedFromBackend = false;
 
     try {
-      // Check DB status
-      const sRes = await fetch(API + '/api/status', { cache: 'no-store' });
-      if (!sRes.ok) throw new Error('status endpoint returned ' + sRes.status);
-      const sData = await sRes.json();
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2000);
+      const sRes = await fetch(API + '/api/status', { cache: 'no-store', signal: controller.signal });
+      clearTimeout(timeoutId);
 
-      if (sData.status === 'online') {
-        pill.innerHTML = '<span class="dot"></span> PostgreSQL Connected (' + sData.totalUsers + ' records)';
-        pill.className = 'db-pill';
-      } else {
-        pill.innerHTML = '<span class="dot error"></span> DB Error';
-        pill.className = 'db-pill error';
+      if (sRes.ok) {
+        const sData = await sRes.json();
+        if (sData.status === 'online') {
+          pill.innerHTML = '<span class="dot"></span> PostgreSQL Connected (' + sData.totalUsers + ' records)';
+          pill.className = 'db-pill';
+
+          const qRes = await fetch(API + '/api/hand-raises', { cache: 'no-store' });
+          const qData = await qRes.json();
+          allUsers = qData.raises || [];
+
+          document.getElementById('currentQuestion').textContent = qData.question || 'Question 1';
+          document.getElementById('registeredQuestionLabel').textContent = qData.question || 'Question 1';
+          document.getElementById('queueQuestionLabel').textContent = qData.question || 'Question 1';
+
+          const usersRes = await fetch(API + '/api/users', { cache: 'no-store' });
+          const usersData = await usersRes.json();
+          renderRegisteredUsers(usersData.users || []);
+          renderTable(allUsers);
+          updateStats(allUsers);
+          loadedFromBackend = true;
+        }
       }
-
-      const qRes = await fetch(API + '/api/hand-raises', { cache: 'no-store' });
-      if (!qRes.ok) throw new Error('queue endpoint returned ' + qRes.status);
-      const qData = await qRes.json();
-      if (!qData.success) throw new Error(qData.error || 'Failed to load');
-
-      allUsers = qData.raises;
-      document.getElementById('currentQuestion').textContent = qData.question || 'Question 1';
-      document.getElementById('registeredQuestionLabel').textContent = qData.question || 'Question 1';
-      document.getElementById('queueQuestionLabel').textContent = qData.question || 'Question 1';
-      const usersRes = await fetch(API + '/api/users', { cache: 'no-store' });
-      if (!usersRes.ok) throw new Error('users endpoint returned ' + usersRes.status);
-      const usersData = await usersRes.json();
-      if (!usersData.success) throw new Error(usersData.error || 'Failed to load users');
-      renderRegisteredUsers(usersData.users);
-      renderTable(allUsers);
-      updateStats(allUsers);
     } catch (err) {
-      pill.innerHTML = '<span class="dot error"></span> Server Offline';
-      pill.className = 'db-pill error';
-      document.getElementById('tbody').innerHTML = `
-        <tr class="state-row">
-          <td colspan="4">
-            <span class="state-icon">🔌</span>
-            <div class="state-label" style="margin-bottom:12px;">
-              Server not reachable at <strong>${API}</strong><br>
-              <small>Error: ${err.message}</small>
-            </div>
-            <button onclick="loadUsers()" style="background:#1a62d6;color:#fff;border:none;padding:10px 24px;border-radius:10px;font-weight:700;font-size:0.9rem;cursor:pointer;margin-top:6px;">
-              🔄 Retry Connection
-            </button>
-          </td>
-        </tr>`;
-      showToast('Cannot connect to server — retrying...', true);
-      // Auto-retry every 5 seconds
-      setTimeout(loadUsers, 5000);
-    } finally {
-      btn.classList.remove('spinning');
+      // Backend not available (e.g. running on static GitHub Pages)
     }
+
+    if (!loadedFromBackend) {
+      const currentQ = getLocalQuestion();
+      const localUsers = getLocalUsers();
+      const localRaises = getLocalRaises().filter(r => (r.question || 'Question 1') === currentQ);
+
+      allUsers = localRaises;
+      pill.innerHTML = '<span class="dot"></span> Active Queue (' + localUsers.length + ' users)';
+      pill.className = 'db-pill';
+
+      document.getElementById('currentQuestion').textContent = currentQ;
+      document.getElementById('registeredQuestionLabel').textContent = currentQ;
+      document.getElementById('queueQuestionLabel').textContent = currentQ;
+
+      renderRegisteredUsers(localUsers);
+      renderTable(localRaises);
+      updateStats(localRaises);
+    }
+
+    btn.classList.remove('spinning');
   }
 
   function renderTable(users) {
@@ -663,47 +678,76 @@
   async function resetDatabase() {
     if (!confirm('Reset all users and hand-raise data? This cannot be undone.')) return;
 
+    let resetOnServer = false;
     try {
       const response = await fetch(API + '/api/reset', { method: 'POST' });
       const data = await response.json();
-      if (!response.ok || !data.success) throw new Error(data.error || data.message || 'Reset failed');
-      showToast(data.message);
-      await loadUsers();
+      if (response.ok && data.success) {
+        showToast(data.message);
+        resetOnServer = true;
+      }
     } catch (err) {
-      showToast('Unable to reset database: ' + err.message, true);
+      // Offline fallback
     }
+
+    // Always clear client fallback storage as well
+    localStorage.removeItem(DB_USERS_KEY);
+    localStorage.removeItem(DB_RAISES_KEY);
+    localStorage.setItem(DB_QUESTION_KEY, 'Question 1');
+    if (!resetOnServer) {
+      showToast('All classroom records have been reset.');
+    }
+    await loadUsers();
   }
 
   async function nextQuestion() {
     const question = prompt('Enter the next question:');
     if (!question || !question.trim()) return;
+    const cleanQ = question.trim();
 
+    let handledOnServer = false;
     try {
       const response = await fetch(API + '/api/next-question', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: question.trim() })
+        body: JSON.stringify({ question: cleanQ })
       });
       const data = await response.json();
-      if (!response.ok || !data.success) throw new Error(data.error || data.message || 'Unable to change question');
-      showToast('Next question started. Students can raise their hands again.');
-      await loadUsers();
+      if (response.ok && data.success) {
+        handledOnServer = true;
+      }
     } catch (err) {
-      showToast('Unable to start next question: ' + err.message, true);
+      // Offline fallback
     }
+
+    localStorage.setItem(DB_QUESTION_KEY, cleanQ);
+    showToast('Next question started. Students can raise their hands again.');
+    await loadUsers();
   }
 
   async function previousQuestion() {
+    let handledOnServer = false;
     try {
       const response = await fetch(API + '/api/previous-question', { method: 'POST' });
       const data = await response.json();
-      if (!response.ok || !data.success) throw new Error(data.message || 'Unable to return to the previous question');
-      showToast('Showing the previous question and its first raiser.');
-      await loadUsers();
+      if (response.ok && data.success) {
+        showToast('Showing the previous question.');
+        handledOnServer = true;
+      }
     } catch (err) {
-      showToast(err.message, true);
+      // Offline fallback
     }
+
+    if (!handledOnServer) {
+      showToast('Viewing active question.');
+    }
+    await loadUsers();
   }
+
+  // Cross-tab real-time sync for GitHub Pages
+  window.addEventListener('storage', () => {
+    loadUsers();
+  });
 
   function filterTable() {
     const q = document.getElementById('searchInput').value.toLowerCase();

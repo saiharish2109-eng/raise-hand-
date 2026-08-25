@@ -73,7 +73,9 @@ const STORAGE_CURRENT_USER_KEY = "pancha_tatva_current_user_pg";
 // Global State
 let currentUser = null;
 let isPostgresConnected = false;
-const API_BASE = window.location.port === "5500" ? "http://localhost:3000" : "";
+// Note: If deploying frontend on GitHub Pages, set BACKEND_URL to your deployed Node.js backend (e.g. "https://your-app.onrender.com")
+const BACKEND_URL = "";
+const API_BASE = BACKEND_URL || (window.location.port === "5500" ? "http://localhost:3000" : "");
 
 // --- Initialize Application ---
 document.addEventListener("DOMContentLoaded", () => {
@@ -81,11 +83,35 @@ document.addEventListener("DOMContentLoaded", () => {
   checkExistingSession();
 });
 
+// --- Local Storage Fallback Data Helpers for GitHub Pages / Offline ---
+const DB_USERS_KEY = "pancha_tatva_all_users_db";
+const DB_RAISES_KEY = "pancha_tatva_all_raises_db";
+const DB_QUESTION_KEY = "pancha_tatva_current_question";
+
+function getLocalUsers() {
+  try { return JSON.parse(localStorage.getItem(DB_USERS_KEY) || "[]"); } catch(e) { return []; }
+}
+function saveLocalUsers(users) {
+  localStorage.setItem(DB_USERS_KEY, JSON.stringify(users));
+}
+function getLocalRaises() {
+  try { return JSON.parse(localStorage.getItem(DB_RAISES_KEY) || "[]"); } catch(e) { return []; }
+}
+function saveLocalRaises(raises) {
+  localStorage.setItem(DB_RAISES_KEY, JSON.stringify(raises));
+}
+function getLocalQuestion() {
+  return localStorage.getItem(DB_QUESTION_KEY) || "Question 1";
+}
+
 // Check Backend / PostgreSQL connection status
 async function checkPostgresStatus() {
   const dbStatusPill = document.getElementById("dbStatusPill");
   try {
-    const res = await fetch(`${API_BASE}/api/status`);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 2500);
+    const res = await fetch(`${API_BASE}/api/status`, { signal: controller.signal });
+    clearTimeout(timeoutId);
     if (res.ok) {
       const data = await res.json();
       isPostgresConnected = true;
@@ -93,15 +119,16 @@ async function checkPostgresStatus() {
         dbStatusPill.innerHTML = `<span class="db-dot active"></span> PostgreSQL Connected (${data.totalUsers} saved)`;
         dbStatusPill.classList.add("online");
       }
-    } else {
-      throw new Error("DB server returned error");
+      return;
     }
   } catch (err) {
-    isPostgresConnected = false;
-    if (dbStatusPill) {
-      dbStatusPill.innerHTML = `<span class="db-dot offline"></span> PostgreSQL Syncing`;
-      dbStatusPill.classList.remove("online");
-    }
+    // Backend offline / GitHub Pages mode
+  }
+  isPostgresConnected = false;
+  if (dbStatusPill) {
+    const total = getLocalUsers().length;
+    dbStatusPill.innerHTML = `<span class="db-dot active"></span> Active Portal (${total} registered)`;
+    dbStatusPill.classList.add("online");
   }
 }
 
@@ -148,7 +175,7 @@ function togglePasswordVisibility(inputId) {
   }
 }
 
-// --- Registration Logic (PostgreSQL Backend) ---
+// --- Registration Logic ---
 async function handleRegister(e) {
   e.preventDefault();
 
@@ -182,42 +209,73 @@ async function handleRegister(e) {
   };
 
   btnSubmit.disabled = true;
-  btnSubmit.innerHTML = `<span>Saving to PostgreSQL...</span>`;
+  btnSubmit.innerHTML = `<span>Registering...</span>`;
 
   try {
-    const res = await fetch(`${API_BASE}/api/register`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
-
-    const data = await res.json();
-
-    if (!res.ok || !data.success) {
-      showToast(data.message || "Registration failed", true);
-      btnSubmit.disabled = false;
-      btnSubmit.innerHTML = `<span>Complete Registration</span><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg>`;
-      return;
+    let handled = false;
+    // Attempt API register if server is reachable
+    if (isPostgresConnected) {
+      try {
+        const res = await fetch(`${API_BASE}/api/register`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          currentUser = data.user;
+          handled = true;
+        } else {
+          showToast(data.message || "Registration failed", true);
+          btnSubmit.disabled = false;
+          btnSubmit.innerHTML = `<span>Complete Registration</span><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg>`;
+          return;
+        }
+      } catch (err) {
+        handled = false;
+      }
     }
 
-    // Successfully saved to PostgreSQL
-    currentUser = data.user;
+    // Fallback: Client Storage mode (GitHub Pages)
+    if (!handled) {
+      const users = getLocalUsers();
+      if (users.some(u => u.email.toLowerCase() === email)) {
+        showToast("This email is already registered. Please sign in!", true);
+        btnSubmit.disabled = false;
+        btnSubmit.innerHTML = `<span>Complete Registration</span><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg>`;
+        return;
+      }
+      const newUser = {
+        id: users.length + 1,
+        name: name,
+        email: email,
+        password: password,
+        house_key: houseOption.value,
+        houseKey: houseOption.value,
+        question: getLocalQuestion(),
+        registered_at: new Date().toISOString()
+      };
+      users.push(newUser);
+      saveLocalUsers(users);
+      currentUser = newUser;
+    }
+
     localStorage.setItem(STORAGE_CURRENT_USER_KEY, JSON.stringify(currentUser));
     document.getElementById("registerForm").reset();
 
-    showToast(`Registered successfully in PostgreSQL! Welcome to House ${HOUSES[currentUser.houseKey]?.name || ''}!`);
+    showToast(`Registered successfully! Welcome to House ${HOUSES[currentUser.houseKey]?.name || ''}!`);
     checkPostgresStatus();
     renderDashboard();
   } catch (err) {
-    console.error("Register fetch error:", err);
-    showToast("Server connection error. Please make sure the PostgreSQL server is running.", true);
+    console.error("Register error:", err);
+    showToast("An error occurred during registration. Please try again.", true);
   } finally {
     btnSubmit.disabled = false;
     btnSubmit.innerHTML = `<span>Complete Registration</span><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg>`;
   }
 }
 
-// --- Login Logic (PostgreSQL Backend) ---
+// --- Login Logic ---
 async function handleLogin(e) {
   e.preventDefault();
 
@@ -234,30 +292,62 @@ async function handleLogin(e) {
   btnSubmit.innerHTML = `<span>Authenticating...</span>`;
 
   try {
-    const res = await fetch(`${API_BASE}/api/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password })
-    });
-
-    const data = await res.json();
-
-    if (!res.ok || !data.success) {
-      showToast(data.message || "Login failed", true);
-      btnSubmit.disabled = false;
-      btnSubmit.innerHTML = `<span>Log In to Realm</span><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path><polyline points="10 17 15 12 10 7"></polyline><line x1="15" y1="12" x2="3" y2="12"></line></svg>`;
-      return;
+    let handled = false;
+    if (isPostgresConnected) {
+      try {
+        const res = await fetch(`${API_BASE}/api/login`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password })
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          currentUser = data.user;
+          handled = true;
+        } else {
+          showToast(data.message || "Login failed", true);
+          btnSubmit.disabled = false;
+          btnSubmit.innerHTML = `<span>Log In to Realm</span><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path><polyline points="10 17 15 12 10 7"></polyline><line x1="15" y1="12" x2="3" y2="12"></line></svg>`;
+          return;
+        }
+      } catch (err) {
+        handled = false;
+      }
     }
 
-    currentUser = data.user;
+    // Fallback: Client Storage mode (GitHub Pages)
+    if (!handled) {
+      const users = getLocalUsers();
+      const matched = users.find(u => u.email.toLowerCase() === email);
+      if (!matched) {
+        showToast("No account found with this email. Please register!", true);
+        btnSubmit.disabled = false;
+        btnSubmit.innerHTML = `<span>Log In to Realm</span><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path><polyline points="10 17 15 12 10 7"></polyline><line x1="15" y1="12" x2="3" y2="12"></line></svg>`;
+        return;
+      }
+      if (matched.password !== password) {
+        showToast("Incorrect password. Please try again.", true);
+        btnSubmit.disabled = false;
+        btnSubmit.innerHTML = `<span>Log In to Realm</span><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path><polyline points="10 17 15 12 10 7"></polyline><line x1="15" y1="12" x2="3" y2="12"></line></svg>`;
+        return;
+      }
+      currentUser = {
+        id: matched.id,
+        name: matched.name,
+        email: matched.email,
+        houseKey: matched.houseKey || matched.house_key,
+        registeredAt: matched.registered_at
+      };
+    }
+
     localStorage.setItem(STORAGE_CURRENT_USER_KEY, JSON.stringify(currentUser));
     document.getElementById("loginForm").reset();
 
     showToast(`Welcome back, ${currentUser.name}!`);
     renderDashboard();
   } catch (err) {
-    console.error("Login fetch error:", err);
-    showToast("Unable to connect to database server. Please ensure server is running.", true);
+    console.error("Login error:", err);
+    showToast("Authentication failed. Please try again.", true);
   } finally {
     btnSubmit.disabled = false;
     btnSubmit.innerHTML = `<span>Log In to Realm</span><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path><polyline points="10 17 15 12 10 7"></polyline><line x1="15" y1="12" x2="3" y2="12"></line></svg>`;
@@ -315,16 +405,25 @@ function renderHouseButton(house) {
 async function loadHandRaiseStatus() {
   if (!currentUser) return;
 
-  try {
-    const res = await fetch(`${API_BASE}/api/hand-raises`, { cache: "no-store" });
-    const data = await res.json();
-    if (!res.ok || !data.success) throw new Error(data.error || "Unable to load hand raises");
-    updateRaiseButton(data.raises[0]);
-    updateFirstRaiser(data.raises[0]);
-  } catch (err) {
-    console.error("Hand raise status error:", err);
-    showToast("Unable to check hand-raise status", true);
+  if (isPostgresConnected) {
+    try {
+      const res = await fetch(`${API_BASE}/api/hand-raises`, { cache: "no-store" });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        updateRaiseButton(data.raises[0]);
+        updateFirstRaiser(data.raises[0]);
+        return;
+      }
+    } catch (err) {
+      // fallback below
+    }
   }
+
+  // Client Storage Fallback (GitHub Pages mode)
+  const currentQ = getLocalQuestion();
+  const raises = getLocalRaises().filter(r => (r.question || "Question 1") === currentQ);
+  updateRaiseButton(raises[0]);
+  updateFirstRaiser(raises[0]);
 }
 
 function updateFirstRaiser(firstRaise) {
@@ -364,22 +463,60 @@ async function handleRaiseHand() {
   const button = document.getElementById("raiseHandButton");
   button.disabled = true;
 
+  if (isPostgresConnected) {
+    try {
+      const res = await fetch(`${API_BASE}/api/hand-raises`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: currentUser.id })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        updateRaiseButton(data.raise);
+        await loadHandRaiseStatus();
+        showToast("Your hand is raised. Faculty can see your place in line.");
+        return;
+      }
+    } catch (err) {
+      // Fallback below
+    }
+  }
+
+  // Client Storage Fallback (GitHub Pages mode)
   try {
-    const res = await fetch(`${API_BASE}/api/hand-raises`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId: currentUser.id })
-    });
-    const data = await res.json();
-    if (!res.ok || !data.success) throw new Error(data.message || "Unable to raise hand");
-    updateRaiseButton(data.raise);
-    await loadHandRaiseStatus();
+    const currentQ = getLocalQuestion();
+    const allRaises = getLocalRaises();
+    const existing = allRaises.find(r => (r.question || "Question 1") === currentQ);
+    if (existing) {
+      showToast("A hand has already been raised for this question.", true);
+      updateRaiseButton(existing);
+      return;
+    }
+    const newRaise = {
+      id: Date.now(),
+      user_id: currentUser.id,
+      name: currentUser.name,
+      house_key: currentUser.houseKey,
+      question: currentQ,
+      raised_at: new Date().toISOString()
+    };
+    allRaises.push(newRaise);
+    saveLocalRaises(allRaises);
+    updateRaiseButton(newRaise);
+    updateFirstRaiser(newRaise);
     showToast("Your hand is raised. Faculty can see your place in line.");
   } catch (err) {
     button.disabled = false;
     showToast(err.message, true);
   }
 }
+
+// Cross-tab auto-sync for GitHub Pages / client storage
+window.addEventListener("storage", () => {
+  if (currentUser) {
+    loadHandRaiseStatus();
+  }
+});
 
 // --- House Modal Display Logic ---
 function openHouseModal() {
