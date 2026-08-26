@@ -267,8 +267,8 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// Start Server after DB initialization
-initializeDatabase().then(async () => {
+async function initializeServer() {
+  await initializeDatabase();
   const questionResult = await pool.query(
     `SELECT question_history.id, question_history.question
      FROM question_history
@@ -281,13 +281,21 @@ initializeDatabase().then(async () => {
     currentQuestionId = activeQuestion.id;
     currentQuestion = activeQuestion.question;
   }
+}
+
+module.exports = { app, initializeServer };
+
+// Start the local server after DB initialization
+if (require.main === module) {
+  initializeServer().then(() => {
   app.listen(PORT, () => {
     console.log(`=================================================`);
     console.log(`  PANCHA TATVA Portal running on http://localhost:${PORT}`);
     console.log(`  PostgreSQL Database integration active`);
     console.log(`=================================================`);
   });
-}).catch(err => {
-  console.error('Failed to initialize database:', err);
-  process.exit(1);
-});
+  }).catch(err => {
+    console.error('Failed to initialize database:', err);
+    process.exit(1);
+  });
+}
