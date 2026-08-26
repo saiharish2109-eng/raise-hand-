@@ -283,7 +283,8 @@ async function initializeServer() {
   }
 }
 
-module.exports = { app, initializeServer };
+app.initializeServer = initializeServer;
+module.exports = app;
 
 // Start the local server after DB initialization
 if (require.main === module) {
