@@ -245,6 +245,47 @@
       }
       .faculty-view #registeredUsersCard { display: none; }
 
+      /* ── START / STOP RAISE HAND BUTTON (Faculty Only) ── */
+      .btn-start-session {
+        display: inline-flex; align-items: center; gap: 8px;
+        padding: 10px 22px; border-radius: 12px;
+        font-size: 0.95rem; font-weight: 800;
+        border: none; cursor: pointer; transition: all .25s;
+        letter-spacing: .3px;
+      }
+      .btn-start-session.start {
+        background: linear-gradient(135deg, #10b981, #059669);
+        color: #fff;
+        box-shadow: 0 4px 14px rgba(16,185,129,.35);
+      }
+      .btn-start-session.start:hover { background: linear-gradient(135deg,#059669,#047857); }
+      .btn-start-session.stop {
+        background: linear-gradient(135deg,#ef4444,#dc2626);
+        color: #fff;
+        box-shadow: 0 4px 14px rgba(239,68,68,.35);
+      }
+      .btn-start-session.stop:hover { background: linear-gradient(135deg,#dc2626,#b91c1c); }
+      .session-status-badge {
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 5px 13px; border-radius: 20px;
+        font-size: 0.8rem; font-weight: 800;
+        letter-spacing: .4px;
+      }
+      .session-status-badge.active {
+        background: #ecfdf5; color: #059669; border: 1px solid #a7f3d0;
+      }
+      .session-status-badge.inactive {
+        background: #fef2f2; color: #dc2626; border: 1px solid #fecaca;
+      }
+      .session-dot {
+        width: 7px; height: 7px; border-radius: 50%; display: inline-block;
+      }
+      .session-dot.active { background: #10b981; box-shadow: 0 0 6px #10b981; animation: pulse 2s infinite; }
+      .session-dot.inactive { background: #ef4444; }
+      /* Hide the start-stop card on non-faculty view */
+      #facultyStartCard { display: none; }
+      .faculty-view #facultyStartCard { display: block; }
+
     /* ── TABLE CARD ── */
     .table-card {
       background: var(--bg-card);
@@ -399,6 +440,26 @@
 </script>
 
 <div class="page">
+
+  <!-- Faculty Start/Stop Raise-Hand Control (Faculty View Only) -->
+  <div class="table-card" id="facultyStartCard" style="margin-bottom:28px;">
+    <div style="padding:20px 24px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+      <div>
+        <div class="stat-label">Raise Hand Permission</div>
+        <h2 style="margin-top:4px;color:var(--deep-blue);font-size:1.1rem;">Control whether students can raise their hand</h2>
+        <div style="margin-top:8px;">
+          <span class="session-status-badge inactive" id="sessionStatusBadge">
+            <span class="session-dot inactive" id="sessionStatusDot"></span>
+            <span id="sessionStatusText">Session Stopped — Raise hand is blocked</span>
+          </span>
+        </div>
+      </div>
+      <button class="btn-start-session start" id="btnToggleSession" onclick="toggleRaiseSession()">
+        <span id="toggleBtnIcon">▶</span>
+        <span id="toggleBtnLabel">Start Session</span>
+      </button>
+    </div>
+  </div>
 
   <div class="table-card" style="margin-bottom:28px;">
     <div style="padding:18px 20px;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;">
@@ -788,9 +849,90 @@
     toastT = setTimeout(() => { el.classList.remove('show'); }, 3500);
   }
 
+  // ── RAISE HAND SESSION CONTROL (Faculty only) ──────────────────────────
+  const RAISE_ENABLED_KEY = 'pancha_tatva_raise_enabled';
+  let raiseSessionEnabled = false;
+
+  function getRaiseEnabledLocal() {
+    return localStorage.getItem(RAISE_ENABLED_KEY) === 'true';
+  }
+
+  function setRaiseEnabledLocal(val) {
+    localStorage.setItem(RAISE_ENABLED_KEY, val ? 'true' : 'false');
+  }
+
+  function updateSessionUI(enabled) {
+    raiseSessionEnabled = enabled;
+    const badge = document.getElementById('sessionStatusBadge');
+    const dot = document.getElementById('sessionStatusDot');
+    const text = document.getElementById('sessionStatusText');
+    const btn = document.getElementById('btnToggleSession');
+    const icon = document.getElementById('toggleBtnIcon');
+    const label = document.getElementById('toggleBtnLabel');
+    if (!badge) return; // not on faculty view
+
+    if (enabled) {
+      badge.className = 'session-status-badge active';
+      dot.className = 'session-dot active';
+      text.textContent = 'Session Active — Students can raise their hand';
+      btn.className = 'btn-start-session stop';
+      icon.textContent = '⏹';
+      label.textContent = 'Stop Session';
+    } else {
+      badge.className = 'session-status-badge inactive';
+      dot.className = 'session-dot inactive';
+      text.textContent = 'Session Stopped — Raise hand is blocked';
+      btn.className = 'btn-start-session start';
+      icon.textContent = '▶';
+      label.textContent = 'Start Session';
+    }
+  }
+
+  async function loadRaiseEnabled() {
+    // Try server first
+    try {
+      const res = await fetch(API + '/api/raise-enabled', { cache: 'no-store' });
+      if (res.ok) {
+        const data = await res.json();
+        setRaiseEnabledLocal(data.enabled);
+        updateSessionUI(data.enabled);
+        return;
+      }
+    } catch (err) { /* offline fallback */ }
+    // Fallback: localStorage
+    const val = getRaiseEnabledLocal();
+    updateSessionUI(val);
+  }
+
+  async function toggleRaiseSession() {
+    const newState = !raiseSessionEnabled;
+    // Optimistic UI update
+    updateSessionUI(newState);
+    setRaiseEnabledLocal(newState);
+
+    // Try server
+    try {
+      await fetch(API + '/api/raise-enabled', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: newState })
+      });
+    } catch (err) { /* offline, localStorage already updated */ }
+
+    showToast(newState
+      ? '✅ Session started — students can now raise their hand!'
+      : '🛑 Session stopped — raise hand is now blocked.'
+    );
+  }
+  // ── END RAISE HAND SESSION CONTROL ──────────────────────────────────────
+
   // Load on page ready
   loadUsers();
+  loadRaiseEnabled();
   setInterval(loadUsers, 2000);
+  // Keep raise-enabled state in sync (every 3 seconds for faculty view)
+  setInterval(loadRaiseEnabled, 3000);
+
 </script>
 </body>
 </html>

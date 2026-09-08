@@ -7,6 +7,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 let currentQuestion = 'Question 1';
 let currentQuestionId = 1;
+let raiseHandEnabled = false; // Faculty must explicitly start the session
 
 app.use(cors());
 app.use(express.json());
@@ -58,6 +59,21 @@ async function resetDatabase(req, res) {
 
 app.post('/api/reset', resetDatabase);
 app.delete('/api/users', resetDatabase);
+
+// Get raise-hand enabled state
+app.get('/api/raise-enabled', (req, res) => {
+  res.json({ enabled: raiseHandEnabled });
+});
+
+// Faculty toggle raise-hand enabled state
+app.post('/api/raise-enabled', (req, res) => {
+  const { enabled } = req.body;
+  if (typeof enabled !== 'boolean') {
+    return res.status(400).json({ success: false, message: 'enabled must be a boolean' });
+  }
+  raiseHandEnabled = enabled;
+  res.json({ success: true, enabled: raiseHandEnabled });
+});
 
 // Get the faculty queue in the order students raised their hands
 app.get('/api/hand-raises', async (req, res) => {

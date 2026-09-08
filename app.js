@@ -69,10 +69,12 @@ const HOUSES = {
 
 // Storage Keys
 const STORAGE_CURRENT_USER_KEY = "pancha_tatva_current_user_pg";
+const RAISE_ENABLED_KEY = "pancha_tatva_raise_enabled";
 
 // Global State
 let currentUser = null;
 let isPostgresConnected = false;
+let raiseHandSessionEnabled = false; // Controlled by faculty
 // Note: If deploying frontend on GitHub Pages, set BACKEND_URL to your deployed Node.js backend (e.g. "https://your-app.onrender.com")
 const BACKEND_URL = "";
 const API_BASE = BACKEND_URL || (window.location.port === "5500" ? "http://localhost:3000" : "");
@@ -81,6 +83,8 @@ const API_BASE = BACKEND_URL || (window.location.port === "5500" ? "http://local
 document.addEventListener("DOMContentLoaded", () => {
   checkPostgresStatus();
   checkExistingSession();
+  // Poll raise-enabled state every 2 seconds to react to faculty toggling
+  setInterval(syncRaiseEnabledState, 2000);
 });
 
 // --- Local Storage Fallback Data Helpers for GitHub Pages / Offline ---
@@ -102,6 +106,31 @@ function saveLocalRaises(raises) {
 }
 function getLocalQuestion() {
   return localStorage.getItem(DB_QUESTION_KEY) || "Question 1";
+}
+
+
+// --- Sync Raise-Hand Enabled State (from faculty) ---
+async function syncRaiseEnabledState() {
+  let enabled = false;
+  // Try server first
+  try {
+    const res = await fetch(`${API_BASE}/api/raise-enabled`, { cache: "no-store" });
+    if (res.ok) {
+      const data = await res.json();
+      enabled = Boolean(data.enabled);
+      localStorage.setItem(RAISE_ENABLED_KEY, enabled ? "true" : "false");
+    } else {
+      enabled = localStorage.getItem(RAISE_ENABLED_KEY) === "true";
+    }
+  } catch (err) {
+    // Fallback to localStorage (works for same-device cross-tab)
+    enabled = localStorage.getItem(RAISE_ENABLED_KEY) === "true";
+  }
+  raiseHandSessionEnabled = enabled;
+  // Re-apply the button state for the currently logged-in user
+  if (currentUser) {
+    loadHandRaiseStatus();
+  }
 }
 
 // Check Backend / PostgreSQL connection status
@@ -450,6 +479,21 @@ function updateRaiseButton(existingRaise) {
   const status = document.getElementById("raiseHandStatus");
   if (!button || !status) return;
 
+  // If faculty has not started the session, block the raise hand button
+  if (!raiseHandSessionEnabled) {
+    button.disabled = true;
+    button.classList.remove("raised");
+    button.classList.add("session-blocked");
+    button.querySelector(".raise-hand-symbol").textContent = "🔒";
+    button.querySelector(".raise-button-label").textContent = "Raise Hand";
+    status.textContent = "⏳ Waiting for faculty to start the session…";
+    return;
+  }
+
+  // Session is active — restore normal icon and remove blocked style
+  button.classList.remove("session-blocked");
+  button.querySelector(".raise-hand-symbol").textContent = "✋";
+
   button.disabled = Boolean(existingRaise);
   button.classList.toggle("raised", Boolean(existingRaise));
   status.textContent = existingRaise
@@ -460,6 +504,13 @@ function updateRaiseButton(existingRaise) {
 
 async function handleRaiseHand() {
   if (!currentUser) return;
+
+  // Guard: faculty must start the session first
+  if (!raiseHandSessionEnabled) {
+    showToast("Session not started yet. Wait for faculty to enable raise hand.", true);
+    return;
+  }
+
   const button = document.getElementById("raiseHandButton");
   button.disabled = true;
 
